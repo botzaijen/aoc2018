@@ -5,8 +5,10 @@
 #include <stdint.h>
 #include "curses.h"
 
-#define ELF 0
-#define GHOUL 1
+#define ELF 'E' 
+#define GHOUL 'G'
+#define OPEN '.'
+#define WALL '#'
 
 #define LEN(a) (sizeof(a)/sizeof(a[0]))
 
@@ -75,7 +77,7 @@ void bfs_distance(Entity* entity)
     map.queue[current_idx].x = entity->x;
     map.queue[current_idx].y = entity->y;
     map.queue[current_idx].val = 0;
-    map.queue[current_idx].tile = '.';
+    map.queue[current_idx].tile = OPEN;
     map.queue_len++;
 
     map.came_from[IDX(entity->x, entity->y)].x = entity->x;
@@ -92,7 +94,7 @@ void bfs_distance(Entity* entity)
             {cur.x, cur.y + 1, cur.val + 1, map.rows[cur.y + 1][cur.x]}}; 
         for (int neighbor_idx = 0; neighbor_idx < LEN(neighbors); ++neighbor_idx)
         {
-            if (neighbors[neighbor_idx].tile == '.')
+            if (neighbors[neighbor_idx].tile == OPEN)
             {
                 int x = neighbors[neighbor_idx].x;
                 int y = neighbors[neighbor_idx].y;
@@ -106,6 +108,79 @@ void bfs_distance(Entity* entity)
         current_idx++;
     }
 }
+
+void bfs_action(Entity* entity)
+{
+    map.queue_len = 0;
+    memset(map.queue, 0, sizeof(GridPoint)*map.xdim*map.ydim);
+    map.came_from_len = 0;
+    memset(map.came_from, -1, sizeof(GridPoint)*map.xdim*map.ydim);
+
+    int current_idx = 0;
+    map.queue[current_idx].x = entity->x;
+    map.queue[current_idx].y = entity->y;
+    map.queue[current_idx].val = 0;
+    map.queue[current_idx].tile = OPEN;
+    map.queue_len++;
+
+    int eidx = IDX(entity->x, entity->y);
+    map.came_from[eidx].x = entity->x;
+    map.came_from[eidx].y = entity->y;
+    map.came_from[eidx].val = 0;
+
+    int found = 0;
+    while (current_idx < map.queue_len && !found)
+    {
+        GridPoint cur = map.queue[current_idx];
+        GridPoint neighbors[4] = { 
+            {cur.x, cur.y - 1, cur.val + 1, map.rows[cur.y - 1][cur.x]}, 
+            {cur.x - 1, cur.y, cur.val + 1, map.rows[cur.y][cur.x - 1]}, 
+            {cur.x + 1, cur.y, cur.val + 1, map.rows[cur.y][cur.x + 1]}, 
+            {cur.x, cur.y + 1, cur.val + 1, map.rows[cur.y + 1][cur.x]}}; 
+        for (int neighbor_idx = 0; neighbor_idx < LEN(neighbors); ++neighbor_idx)
+        {
+            GridPoint n = neighbors[neighbor_idx];
+            switch (n.tile)
+            {
+                case OPEN:
+                {
+                    int x = n.x;
+                    int y = n.y;
+                    if (map.came_from[IDX(x,y)].val < 0)  //not visited
+                    {
+                        map.queue[map.queue_len++] = n;
+                        map.came_from[IDX(x,y)] = cur;
+                    }
+                } break;
+
+                case ELF:
+                case GHOUL:
+                {
+                    if (n.tile != entity->type) // enemy 
+                    {
+                        int gp_idx = IDX(cur.x, cur.y);
+                        GridPoint gp;
+                        while (gp_idx != eidx) {
+                            gp = map.came_from[gp_idx]; 
+                            gp_idx = IDX(gp.x, gp.y);
+                        }
+                        if (gp.val > 1)
+                        {
+                            map.rows[entity->y][entity->x] = OPEN;
+                            map.rows[gp.y][gp.x] = entity->type;
+                            entity->x = gp.x;
+                            entity->y = gp.y;
+                            found = 1;
+                        }
+                    }
+                } break;
+            }
+        }
+        current_idx++;
+    }
+}
+
+
 
 void read_map_file(const char* path)
 {
@@ -151,10 +226,10 @@ void read_map_file(const char* path)
             map.xdim = xdim - 1;
             xdim = 0;
             linecount++;
-        } else if (map.mem[idx] == 'G')
+        } else if (map.mem[idx] == GHOUL)
         {
             ghoul_count++;
-        } else if (map.mem[idx] == 'E')
+        } else if (map.mem[idx] == ELF)
         {
             elf_count++;
         }
@@ -184,11 +259,11 @@ void read_map_file(const char* path)
         char cur = map.mem[idx];
         switch(cur)
         {
-            case 'E':
-            case 'G':
+            case ELF:
+            case GHOUL:
                 next_entity->x = ++x;
                 next_entity->y = y;
-                if (cur == 'E')
+                if (cur == ELF)
                 {
                     next_entity->type = ELF;
                     next_entity->hp = 5;
@@ -233,17 +308,15 @@ int main(int argc, char** argv)
         mvprintw(ent->y, map.fighters[idx]->x, c);
     }
 #endif
-    bfs_distance(map.entities);
-    for (int i = 0; i < map.queue_len; ++i)
-    {
-        GridPoint p = map.queue[i];
-        char c[] = {'x', '\0'};
-        c[0] = (p.val < 10) ? '0'+p.val : 'X';
-        mvprintw(p.y, p.x, c);
-    }
-    
+    bfs_action(map.entities);
     mvprintw(map.ydim, 0, "Ghouls: %d", map.ghoul_count);
     mvprintw(map.ydim+1, 0, "Elves: %d", map.elf_count);
+	refresh();			/* Print it on to the real screen */
+	getch();			/* Wait for user input */
+    for (int row_idx = 0; row_idx < map.row_count; ++row_idx)
+    {
+        mvprintw(row_idx, 0, "%s", map.rows[row_idx]);	/* Print line*/
+    }
 	refresh();			/* Print it on to the real screen */
 	getch();			/* Wait for user input */
 	endwin();			/* End curses mode		  */ 
