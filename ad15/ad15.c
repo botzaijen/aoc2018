@@ -16,6 +16,7 @@ typedef uint32_t b32;
 
 #define LEN(a) (sizeof(a)/sizeof(a[0]))
 #define ABS(a) ((a < 0) ? (-a) : (a))
+#define MAX(a,b) ((a<b) ? (b) : (a))
 
 typedef struct
 {
@@ -52,6 +53,8 @@ typedef struct
     GridPoint* queue;
     int came_from_len;
     GridPoint* came_from;
+    int inrange_len;
+    GridPoint* inrange;
 
 } Map;
 static Map map;
@@ -128,6 +131,8 @@ void bfs_move(Entity* entity)
     memset(map.queue, 0, sizeof(GridPoint)*map.xdim*map.ydim);
     map.came_from_len = 0;
     memset(map.came_from, -1, sizeof(GridPoint)*map.xdim*map.ydim);
+    map.inrange_len = 0;
+    memset(map.inrange, 0, sizeof(GridPoint)*MAX(map.goblin_count, map.elf_count));
 
     int current_idx = 0;
     map.queue[current_idx].x = entity->x;
@@ -139,8 +144,7 @@ void bfs_move(Entity* entity)
     int eidx = IDX(entity->x, entity->y);
     map.came_from[eidx].val = 0; // mark as visited
 
-    b32 done = False;
-    while (current_idx < map.queue_len && !done)
+    while (current_idx < map.queue_len)
     {
         GridPoint cur = map.queue[current_idx];
         GridPoint neighbors[4] = { 
@@ -170,29 +174,53 @@ void bfs_move(Entity* entity)
                 {
                     if (n.tile != entity->type) // enemy 
                     {
-                        int gp_idx = IDX(cur.x, cur.y);
-                        int prev_gp_idx = gp_idx;
-                        GridPoint gp;
-                        while (gp_idx != eidx) {
-                            prev_gp_idx = gp_idx;
-                            gp = map.came_from[gp_idx]; 
-                            gp_idx = IDX(gp.x, gp.y);
-                        }
-                        int px = X(prev_gp_idx);
-                        int py = Y(prev_gp_idx);
-                        if (n.val > 0)
-                        {
-                            map.rows[entity->y][entity->x] = OPEN;
-                            map.rows[py][px] = entity->type;
-                            entity->x = px;
-                            entity->y = py;
-                            done = True;
-                        }
+                        map.inrange[map.inrange_len].x = cur.x;
+                        map.inrange[map.inrange_len].y = cur.y;
+                        map.inrange[map.inrange_len].val = cur.val;
+                        map.inrange_len++;
                     }
                 } break;
             }
         }
         current_idx++;
+    }
+
+    if (map.inrange_len > 0)
+    {
+        GridPoint* chosen = map.inrange;
+        for (int target_idx = 1; target_idx < map.inrange_len; ++target_idx)
+        {
+            GridPoint* current = map.inrange + target_idx;
+            if (current->val < chosen->val)
+            {
+                chosen = current;
+            } else if (current->val == chosen->val)
+            {
+                if (IDX(current->x, current->y) < IDX(chosen->x, chosen->y))
+                {
+                    chosen = current;
+                }
+            }
+        }
+
+        int gp_idx = IDX(chosen->x, chosen->y);
+        int prev_gp_idx = gp_idx;
+        GridPoint gp;
+        while (gp_idx != eidx) {
+            prev_gp_idx = gp_idx;
+            gp = map.came_from[gp_idx]; 
+            gp_idx = IDX(gp.x, gp.y);
+        }
+        int px = X(prev_gp_idx);
+        int py = Y(prev_gp_idx);
+        if (chosen->val > 0)
+        {
+            map.rows[entity->y][entity->x] = OPEN;
+            map.rows[py][px] = entity->type;
+            entity->x = px;
+            entity->y = py;
+        }
+
     }
 }
 
@@ -367,6 +395,9 @@ void read_map_file(const char* path)
     map.came_from_len = 0;
     map.came_from = malloc(sizeof(GridPoint)*map.xdim*map.ydim);
     memset(map.came_from, -1, sizeof(GridPoint)*map.xdim*map.ydim);
+    map.inrange_len = 0;
+    map.inrange = malloc(sizeof(GridPoint)*MAX(goblin_count, elf_count));
+    memset(map.inrange, 0, sizeof(GridPoint)*MAX(goblin_count, elf_count));
 
     Entity* next_entity = map.entities;
     Entity** next_fighter = map.fighters;
