@@ -220,15 +220,17 @@ void print_usage(char** argv)
 {
     printf("Usage %s [-s|-p] <file.map>\n", argv[0]);
     printf("    -s: Step animation\n");
-//    printf("    -p: solve part2\n");
+    printf("    -p: solve part2\n");
 }
 
 void heapsort(Entity** heap, int heap_len);
-void read_map_file(const char* path);
+void freemap();
+void read_map_file(const char* path, int elf_power);
 int main(int argc, char** argv)
 {
     b32 step = False;
     b32 solve_part2 = False;
+    char* path;
     if (argc < 2)
     {
         print_usage(argv);
@@ -237,7 +239,7 @@ int main(int argc, char** argv)
 
     if (argc == 2)
     {
-        read_map_file(argv[1]);
+        path = argv[1];
     } else if (argc > 2)
     {
         if (argv[1][0] == '-')
@@ -248,11 +250,9 @@ int main(int argc, char** argv)
                     step = True;
                     break;
 
-#if 0
                 case 'p':
                     solve_part2 = True;
                     break;
-#endif
             }
         }
         else
@@ -260,13 +260,14 @@ int main(int argc, char** argv)
             print_usage(argv); 
             exit(1);
         }
-
-        read_map_file(argv[2]);
+        path = argv[2];
     }
 
     initscr();			/* Start curses mode 		  */
     cbreak();
     int rows, cols;
+    int elf_power = 3;
+    read_map_file(path, elf_power);
     heapsort(map.fighters, map.entity_count);
     int tempbuf_size = map.entity_count*8+1;
     char* temp_buf = malloc(sizeof(char)*tempbuf_size);
@@ -280,69 +281,96 @@ int main(int argc, char** argv)
 	refresh();			/* Print it on to the real screen */
 	int ch = getch();			/* Wait for user input */
 
-    int cont = 1;
-    int finished_rounds = 0;
-    while(cont)
+    int finished_rounds;
+    do
     {
-        for (int fidx = 0; fidx < map.entity_count; ++fidx)
+        b32 cont = True;
+        finished_rounds = 0;
+        int begin_elf_count = map.elf_count;
+        while(cont)
         {
-            Entity* current = map.fighters[fidx];
-            if (current->hp > 0)
+            for (int fidx = 0; fidx < map.entity_count; ++fidx)
             {
-                bfs_move(current);
-                bfs_attack(current);
-            }
-        }
-        heapsort(map.fighters, map.entity_count);
-        int eidx = 0;
-        for (int row_idx = 0; row_idx < map.row_count; ++row_idx)
-        {
-            int bufcur = 0;
-            mvprintw(row_idx, 0, "%s", map.rows[row_idx]);
-            for(; eidx < map.entity_count; ++eidx)
-            {
-                Entity* current = map.fighters[eidx];
-                if (current->y == row_idx)
+                Entity* current = map.fighters[fidx];
+                if (current->hp > 0)
                 {
-                    bufcur += sprintf(temp_buf+bufcur, "%c(%3d) ", 
-                            (current->type == ELF) ? 'E' : 'G', 
-                            current->hp);
-                }
-                else
-                {
-                    break;
+                    bfs_move(current);
+                    bfs_attack(current);
                 }
             }
-            temp_buf[bufcur] = ' ';
-            mvprintw(row_idx, map.xdim + 1, "%s", temp_buf);
-            memset(temp_buf, ' ', tempbuf_size);
-            temp_buf[tempbuf_size-1] = '\0';
-        }
-        mvprintw(map.ydim, 0, "Goblins: %d", map.goblin_count);
-        mvprintw(map.ydim+1, 0, "Elves: %d", map.elf_count);
-        mvprintw(map.ydim+2, 0, "Round: %d", finished_rounds);
-        refresh();			/* Print it on to the real screen */
-        if (step)
-        {
-            ch = getch();			/* Wait for user input */
-            if (ch == 'q')
+            heapsort(map.fighters, map.entity_count);
+
+            if (solve_part2)
             {
-                cont = 0;
+                if (map.elf_count < begin_elf_count)
+                {
+                    cont = False;
+                }
+                if (map.goblin_count == 0)
+                {
+                    solve_part2 = False;
+                }
             }
-        } 
-        else 
-        {
-            Sleep(DELAY);
+
+            if (!solve_part2)
+            {
+                int eidx = 0;
+                for (int row_idx = 0; row_idx < map.row_count; ++row_idx)
+                {
+                    int bufcur = 0;
+                    mvprintw(row_idx, 0, "%s", map.rows[row_idx]);
+                    for(; eidx < map.entity_count; ++eidx)
+                    {
+                        Entity* current = map.fighters[eidx];
+                        if (current->y == row_idx)
+                        {
+                            bufcur += sprintf(temp_buf+bufcur, "%c(%3d) ", 
+                                    (current->type == ELF) ? 'E' : 'G', 
+                                    current->hp);
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                    temp_buf[bufcur] = ' ';
+                    mvprintw(row_idx, map.xdim + 1, "%s", temp_buf);
+                    memset(temp_buf, ' ', tempbuf_size);
+                    temp_buf[tempbuf_size-1] = '\0';
+                }
+                mvprintw(map.ydim, 0, "Goblins: %d", map.goblin_count);
+                mvprintw(map.ydim+1, 0, "Elves: %d", map.elf_count);
+                mvprintw(map.ydim+2, 0, "Round: %d", finished_rounds);
+                refresh();			/* Print it on to the real screen */
+                if (step)
+                {
+                    ch = getch();			/* Wait for user input */
+                    if (ch == 'q')
+                    {
+                        cont = False;
+                    }
+                } 
+                else 
+                {
+                    Sleep(DELAY);
+                }
+            }
+            if (map.goblin_count == 0 || map.elf_count == 0)
+            {
+                cont = False;
+            }
+            else
+            {
+                finished_rounds++;
+            }
         }
-        if (map.goblin_count == 0 || map.elf_count == 0)
+        if (solve_part2)
         {
-            cont = 0;
+            freemap();
+            read_map_file(path, ++elf_power);
+
         }
-        else
-        {
-            finished_rounds++;
-        }
-    }
+    } while(solve_part2);
 
     int remaining_hp = 0;
     for (int fidx = 0; fidx < map.entity_count; ++fidx)
@@ -353,15 +381,27 @@ int main(int argc, char** argv)
             remaining_hp += current->hp;
         }
     }
-    mvprintw(map.ydim+3, 0, "%s wins, score %d", 
+    mvprintw(map.ydim+3, 0, "%s wins, score %d, elf_power %d", 
              (map.goblin_count > map.elf_count) ? "Goblins" : "Elves",
-             finished_rounds*remaining_hp);
+             finished_rounds*remaining_hp,
+             elf_power);
     getch();
 	endwin();			/* End curses mode		  */ 
+    freemap();
     return 0;
 }
 
-void read_map_file(const char* path)
+void freemap()
+{
+    free(map.mem);
+    free(map.rows);
+    free(map.entities);
+    free(map.fighters);
+    free(map.queue);
+    free(map.came_from);
+}
+
+void read_map_file(const char* path, int elf_power)
 {
     FILE* file = fopen(path, "r");
     if (!file)
@@ -446,7 +486,7 @@ void read_map_file(const char* path)
                 {
                     next_entity->type = ELF;
                     next_entity->hp = 200;
-                    next_entity->power = 3;
+                    next_entity->power = elf_power;
                 } else {
                     next_entity->type = GOBLIN;
                     next_entity->hp = 200;
