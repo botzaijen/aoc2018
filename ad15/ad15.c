@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include "curses.h"
 
+
 typedef uint32_t b32;
 #define False 0
 #define True 1
@@ -13,6 +14,8 @@ typedef uint32_t b32;
 #define GOBLIN 'G'
 #define OPEN '.'
 #define WALL '#'
+
+#define DELAY 300
 
 #define LEN(a) (sizeof(a)/sizeof(a[0]))
 #define ABS(a) ((a < 0) ? (-a) : (a))
@@ -213,19 +216,53 @@ void bfs_move(Entity* entity)
 }
 
 
+void print_usage(char** argv)
+{
+    printf("Usage %s [-s|-p] <file.map>\n", argv[0]);
+    printf("    -s: Step animation\n");
+//    printf("    -p: solve part2\n");
+}
 
 void heapsort(Entity** heap, int heap_len);
 void read_map_file(const char* path);
 int main(int argc, char** argv)
 {
+    b32 step = False;
+    b32 solve_part2 = False;
     if (argc < 2)
     {
-        printf("Usage %s <file.map>\n", argv[0]);
+        print_usage(argv);
         exit(1);
     }
-    //read_map_file("test2.map");
-    //read_map_file("input_15.txt");
-    read_map_file(argv[1]);
+
+    if (argc == 2)
+    {
+        read_map_file(argv[1]);
+    } else if (argc > 2)
+    {
+        if (argv[1][0] == '-')
+        {
+            switch ( argv[1][1] )
+            {
+                case 's':
+                    step = True;
+                    break;
+
+#if 0
+                case 'p':
+                    solve_part2 = True;
+                    break;
+#endif
+            }
+        }
+        else
+        {
+            print_usage(argv); 
+            exit(1);
+        }
+
+        read_map_file(argv[2]);
+    }
 
     initscr();			/* Start curses mode 		  */
     cbreak();
@@ -285,10 +322,17 @@ int main(int argc, char** argv)
         mvprintw(map.ydim+1, 0, "Elves: %d", map.elf_count);
         mvprintw(map.ydim+2, 0, "Round: %d", finished_rounds);
         refresh();			/* Print it on to the real screen */
-        ch = getch();			/* Wait for user input */
-        if (ch == 'q')
+        if (step)
         {
-            cont = 0;
+            ch = getch();			/* Wait for user input */
+            if (ch == 'q')
+            {
+                cont = 0;
+            }
+        } 
+        else 
+        {
+            Sleep(DELAY);
         }
         if (map.goblin_count == 0 || map.elf_count == 0)
         {
